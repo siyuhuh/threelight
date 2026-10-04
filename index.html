@@ -1,33 +1,113 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#101416" />
-  <meta name="description" content="A procedural light study. Explore volumetric scattering, shadows and suspended particles in real time." />
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23101416'/%3E%3Cpath d='M7 8h18L16 27z' fill='%23d6edbc'/%3E%3C/svg%3E" />
-  <title>ThreeLight — Studies in atmosphere</title>
-</head>
-<body>
-  <div id="scene" aria-label="Interactive 3D light study"></div>
-  <header><a class="brand" href="./">THREE<span>LIGHT</span><i></i></a><a class="source" href="https://github.com/siyuhuh/threelight" target="_blank" rel="noreferrer">Source ↗</a></header>
-  <main>
-    <section class="intro"><p class="eyebrow">AN INTERACTIVE LIGHT STUDY / 001</p><h1>Give light<br>some space.</h1><p class="subtitle">A little atmosphere changes everything.</p></section>
-    <details id="controls" class="panel" open aria-label="Light controls">
-      <summary class="panel-heading"><span>Atmosphere / Controls</span><span class="live">LIVE</span></summary>
-      <div class="presets" role="group" aria-label="Atmosphere presets"><button data-preset="gallery" aria-pressed="true">Gallery</button><button data-preset="arctic" aria-pressed="false">Arctic</button><button data-preset="ember" aria-pressed="false">Ember</button></div>
-      <label class="range-label" for="density">Scattering <output id="density-value">0.65</output></label><input id="density" type="range" min="0" max="1.5" step="0.01" value="0.65" />
-      <label class="range-label" for="power">Light intensity <output id="power-value">1.00</output></label><input id="power" type="range" min="0.2" max="2" step="0.01" value="1" />
-      <label class="range-label" for="spread">Beam spread <output id="spread-value">24°</output></label><input id="spread" type="range" min="12" max="38" step="1" value="24" />
-      <div class="toggle-row"><label for="volume">Volumetric light</label><input id="volume" type="checkbox" checked /></div>
-      <div class="toggle-row"><label for="particles">Suspended particles</label><input id="particles" type="checkbox" checked /></div>
-      <div class="toggle-row"><label for="motion">Motion</label><input id="motion" type="checkbox" checked /></div>
-      <div class="quality-row"><label for="quality">Render quality</label><select id="quality"><option value="low">Low</option><option value="high">High</option></select></div>
-      <button id="reset" class="reset">Reset view <span>↺</span></button>
-    </details>
-  </main>
-  <footer><span><b id="preset-name">01 / GALLERY</b><small>Drag to orbit · Scroll to explore</small></span><span class="footnote">REAL-TIME SCATTERING<br>THREE.JS / WEBGL 2</span></footer>
-  <div id="status" role="status"><div><strong>Preparing the light study…</strong><p id="status-detail">Building a world from geometry.</p><button id="retry" hidden>Try again</button></div></div>
-  <script type="module" src="/src/main.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#101416" />
+    <meta
+      name="description"
+      content="A procedural light study. Explore volumetric scattering, shadows and suspended particles in real time."
+    />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23101416'/%3E%3Cpath d='M7 8h18L16 27z' fill='%23d6edbc'/%3E%3C/svg%3E"
+    />
+    <title>ThreeLight — Studies in atmosphere</title>
+  </head>
+  <body>
+    <div id="scene" aria-label="Interactive 3D light study"></div>
+    <header>
+      <a class="brand" href="./">THREE<span>LIGHT</span><i></i></a
+      ><a
+        class="source"
+        href="https://github.com/siyuhuh/threelight"
+        target="_blank"
+        rel="noreferrer"
+        >Source ↗</a
+      >
+    </header>
+    <main>
+      <section class="intro">
+        <p class="eyebrow">AN INTERACTIVE LIGHT STUDY / 001</p>
+        <h1>Give light<br />some space.</h1>
+        <p class="subtitle">A little atmosphere changes everything.</p>
+      </section>
+      <details id="controls" class="panel" open aria-label="Light controls">
+        <summary class="panel-heading">
+          <span>Atmosphere / Controls</span><span class="live">LIVE</span>
+        </summary>
+        <div class="presets" role="group" aria-label="Atmosphere presets">
+          <button data-preset="gallery" aria-pressed="true">Gallery</button
+          ><button data-preset="arctic" aria-pressed="false">Arctic</button
+          ><button data-preset="ember" aria-pressed="false">Ember</button>
+        </div>
+        <label class="range-label" for="density"
+          >Scattering <output id="density-value">0.65</output></label
+        ><input
+          id="density"
+          type="range"
+          min="0"
+          max="1.5"
+          step="0.01"
+          value="0.65"
+        />
+        <label class="range-label" for="power"
+          >Light intensity <output id="power-value">1.00</output></label
+        ><input
+          id="power"
+          type="range"
+          min="0.2"
+          max="2"
+          step="0.01"
+          value="1"
+        />
+        <label class="range-label" for="spread"
+          >Beam spread <output id="spread-value">24°</output></label
+        ><input
+          id="spread"
+          type="range"
+          min="12"
+          max="38"
+          step="1"
+          value="24"
+        />
+        <div class="toggle-row">
+          <label for="volume">Volumetric light</label
+          ><input id="volume" type="checkbox" checked />
+        </div>
+        <div class="toggle-row">
+          <label for="particles">Suspended particles</label
+          ><input id="particles" type="checkbox" checked />
+        </div>
+        <div class="toggle-row">
+          <label for="motion">Motion</label
+          ><input id="motion" type="checkbox" checked />
+        </div>
+        <div class="quality-row">
+          <label for="quality">Render quality</label
+          ><select id="quality">
+            <option value="low">Low</option>
+            <option value="high">High</option>
+          </select>
+        </div>
+        <button id="reset" class="reset">Reset view <span>↺</span></button>
+      </details>
+    </main>
+    <footer>
+      <span
+        ><b id="preset-name">01 / GALLERY</b
+        ><small>Drag to orbit · Scroll to explore</small></span
+      ><span class="footnote"
+        >REAL-TIME SCATTERING<br />THREE.JS / WEBGL 2</span
+      >
+    </footer>
+    <div id="status" role="status">
+      <div>
+        <strong>Preparing the light study…</strong>
+        <p id="status-detail">Building a world from geometry.</p>
+        <button id="retry" hidden>Try again</button>
+      </div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
 </html>
