@@ -14,7 +14,23 @@ export function sampleTube(length, angleDegrees) {
   });
 }
 
+// Angular mask around the tube axis, shared by volume, particles and surfaces.
+export const tubeSectorGLSL = /* glsl */ `
+uniform vec3 tubeAxis, sectorDirection;
+uniform float sectorHalfAngle;
+float tubeSector(vec3 fromLight) {
+ if(sectorHalfAngle>=3.1415) return 1.;
+ vec3 radial=fromLight-tubeAxis*dot(fromLight,tubeAxis);
+ float radius=length(radial);
+ if(radius<.00001) return 0.;
+ float angle=acos(clamp(dot(radial/radius,sectorDirection),-1.,1.));
+ float feather=min(.035,sectorHalfAngle*.2);
+ return 1.-smoothstep(sectorHalfAngle-feather,sectorHalfAngle,angle);
+}
+`;
+
 export const emitterGLSL = /* glsl */ `
+${tubeSectorGLSL}
 uniform vec3 emitterPositions[6];
 uniform bool tubeMode;
 uniform vec3 lightPosition, lightDirection;
@@ -23,7 +39,7 @@ vec3 emitterPosition(int index) {
  return tubeMode ? emitterPositions[index] : lightPosition;
 }
 float emitterEnvelope(vec3 fromLight) {
- if(tubeMode) return 1.;
+ if(tubeMode) return tubeSector(fromLight);
  return smoothstep(coneCos,coneCos+.055,dot(normalize(fromLight),lightDirection));
 }
 `;

@@ -7,6 +7,7 @@ import {
   TUBE_CENTER,
   sampleTube,
   emitterGLSL,
+  tubeSectorGLSL,
 } from "./emitter.js";
 
 const $ = (id) => document.getElementById(id);
@@ -121,6 +122,9 @@ function start() {
   const emitterUniforms = {
     emitterPositions: { value: emitterPositions },
     tubeMode: { value: true },
+    tubeAxis: { value: new THREE.Vector3(1, 0, 0) },
+    sectorDirection: { value: new THREE.Vector3(0, -1, 0) },
+    sectorHalfAngle: { value: Math.PI / 4 },
   };
   const emitterMaterial = new THREE.MeshBasicMaterial({
     color: spot.color.clone().multiplyScalar(4),
@@ -140,14 +144,32 @@ function start() {
   const rim = new THREE.DirectionalLight("#c4d4df", 1.7);
   rim.position.set(3, 4, -4);
   scene.add(rim);
+  function sectorMaterial(options) {
+    const material = new THREE.MeshStandardMaterial(options);
+    material.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, emitterUniforms);
+      shader.fragmentShader = tubeSectorGLSL + shader.fragmentShader;
+      const lighting = THREE.ShaderChunk.lights_fragment_begin.replace(
+        "getPointLightInfo( pointLight, geometryPosition, directLight );",
+        `getPointLightInfo( pointLight, geometryPosition, directLight );
+         directLight.color *= tubeSector(inverseTransformDirection(-directLight.direction, viewMatrix));`,
+      );
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "#include <lights_fragment_begin>",
+        lighting,
+      );
+    };
+    material.customProgramCacheKey = () => "tube-sector-v1";
+    return material;
+  }
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(200, 200),
-    new THREE.MeshStandardMaterial({ color: "#343b35", roughness: 0.92 }),
+    sectorMaterial({ color: "#343b35", roughness: 0.92 }),
   );
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
   scene.add(floor);
-  const material = new THREE.MeshStandardMaterial({
+  const material = sectorMaterial({
     color: "#707b6b",
     roughness: 0.28,
     metalness: 0.65,
@@ -163,7 +185,7 @@ function start() {
   solid(
     new THREE.BoxGeometry(1.5, 0.65, 1.5),
     [0, 0.325, 0],
-    new THREE.MeshStandardMaterial({ color: "#313b32", roughness: 0.8 }),
+    sectorMaterial({ color: "#313b32", roughness: 0.8 }),
   );
   const sphere = solid(new THREE.SphereGeometry(0.78, 64, 32), [0, 1.62, 0]);
   solid(new THREE.BoxGeometry(0.4, 2.7, 0.4), [-1.9, 1.35, -0.2]);
@@ -256,6 +278,39 @@ function start() {
     const tube = $("shape").value === "tube";
     const length = Number($("length").value);
     const angle = Number($("angle").value);
+    const sector = Number($("sector").value);
+    const heading = Number($("heading").value);
+    const axisAngle = THREE.MathUtils.degToRad(angle);
+    const headingAngle = THREE.MathUtils.degToRad(heading);
+    emitterUniforms.tubeAxis.value.set(
+      Math.cos(axisAngle),
+      Math.sin(axisAngle),
+      0,
+    );
+    emitterUniforms.sectorDirection.value.set(
+      Math.sin(axisAngle) * Math.cos(headingAngle),
+      -Math.cos(axisAngle) * Math.cos(headingAngle),
+      Math.sin(headingAngle),
+    );
+    emitterUniforms.sectorHalfAngle.value = THREE.MathUtils.degToRad(
+      sector / 2,
+    );
+    $("sector-value").textContent = sector + "°";
+    $("heading-value").textContent = heading + "°";
+    // Cross-section diagram: 0° is downward, positive heading turns toward +Z.
+    const start = THREE.MathUtils.degToRad(heading - sector / 2);
+    const end = THREE.MathUtils.degToRad(heading + sector / 2);
+    const point = (a) => `${36 * Math.sin(a)},${36 * Math.cos(a)}`;
+    $("sector-path").setAttribute(
+      "d",
+      sector === 360
+        ? "M 0,-36 A 36,36 0 1 1 0,36 A 36,36 0 1 1 0,-36 Z"
+        : `M 0,0 L ${point(start)} A 36,36 0 ${sector > 180 ? 1 : 0} 0 ${point(end)} Z`,
+    );
+    $("sector-diagram").setAttribute(
+      "aria-label",
+      `Tube cross-section: ${sector} degree emission, heading ${heading} degrees`,
+    );
     emitterUniforms.tubeMode.value = tube;
     $("tube-controls").hidden = !tube;
     $("spot-controls").hidden = tube;
@@ -275,7 +330,7 @@ function start() {
       light.color.copy(spot.color);
     });
   }
-  for (const key of ["shape", "length", "angle"])
+  for (const key of ["shape", "length", "angle", "sector", "heading"])
     $(key).addEventListener("input", syncEmitter);
   function sync() {
     for (const key of ["density", "power", "spread"]) {

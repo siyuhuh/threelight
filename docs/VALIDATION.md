@@ -27,3 +27,12 @@ Checked on 2026-10-04:
 - No shader errors or browser warnings were captured during the local rendering checks.
 
 Tube emission is approximated by six samples. Shadow banding and discrete highlights are known limitations; no claim of continuous area-light accuracy or physical mobile performance is made.
+
+# Angular emission sector update
+
+- Production build passed.
+- The default 90° sector visibly limits atmospheric scattering and floor illumination.
+- A 15° sector aimed upward removes tube direct illumination from the floor and objects.
+- 360° restores omnidirectional illumination regardless of heading.
+- Spotlight mode hides tube-sector controls and renders without shader errors.
+- The SVG cross-section follows width and heading changes, including the full-circle case.

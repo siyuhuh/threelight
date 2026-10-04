@@ -375,3 +375,32 @@ summary::-webkit-details-marker {
     max-height: 55dvh;
   }
 }
+
+.sector-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #d6e8c4;
+  margin: 10px 0;
+}
+.sector-preview svg {
+  width: 80px;
+  height: 80px;
+  flex-shrink: 0;
+}
+.sector-preview span {
+  font-size: 11px;
+}
+.sector-preview small {
+  display: block;
+  font-size: 10px;
+  color: #9da79e;
+  line-height: 1.5;
+  margin-top: 6px;
+}
+.control-note {
+  font-size: 10px;
+  color: #9da79e;
+  line-height: 1.5;
+  margin-top: -8px;
+}

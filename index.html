@@ -64,6 +64,61 @@
             >Tube rotation <output id="angle-value">0°</output></label
           >
           <input id="angle" type="range" min="0" max="180" step="1" value="0" />
+          <div class="sector-preview">
+            <svg
+              id="sector-diagram"
+              viewBox="-44 -44 88 88"
+              role="img"
+              aria-label="Tube cross-section"
+            >
+              <circle
+                cx="0"
+                cy="0"
+                r="36"
+                fill="none"
+                stroke="currentColor"
+                opacity=".25"
+              />
+              <path
+                id="sector-path"
+                fill="currentColor"
+                fill-opacity=".25"
+                stroke="currentColor"
+                stroke-width="1"
+              />
+              <circle cx="0" cy="0" r="3" fill="currentColor" />
+            </svg>
+            <span
+              >Emission sector<small
+                >View along the tube<br />0° points downward*</small
+              ></span
+            >
+          </div>
+          <label class="range-label" for="sector"
+            >Sector width <output id="sector-value">90°</output></label
+          >
+          <input
+            id="sector"
+            type="range"
+            min="15"
+            max="360"
+            step="1"
+            value="90"
+          />
+          <label class="range-label" for="heading"
+            >Sector direction <output id="heading-value">0°</output></label
+          >
+          <input
+            id="heading"
+            type="range"
+            min="-180"
+            max="180"
+            step="1"
+            value="0"
+          />
+          <p class="control-note">
+            *Rotates with the tube. 360° lights all sides.
+          </p>
         </div>
         <label class="range-label" for="density"
           >Scattering <output id="density-value">0.65</output></label
