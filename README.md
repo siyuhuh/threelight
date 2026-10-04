@@ -8,6 +8,7 @@
 
 ## Explore
 
+- Tube and spotlight emitters, with a visible light source. Tube length (0.5–4 m) and rotation (0–180°) change the source geometry and illumination together.
 - Three atmosphere presets: Gallery, Arctic, and Ember.
 - Live scattering, intensity, and beam spread controls.
 - Toggle volumetric light and particles to compare the effect.
@@ -36,18 +37,19 @@ npm run preview
 
 ## How it works
 
-1. Three.js draws the procedural scene into a half-float color target with a depth texture. A standard spotlight illuminates the surfaces and casts their shadows.
+1. Three.js draws the procedural scene into a half-float color target with a depth texture. A spotlight or six shadow-casting point samples along a tube illuminate the surfaces. The tube is an omnidirectional line emitter; beam spread applies only to spotlight mode.
 2. A fullscreen shader reconstructs a world-space view ray from the camera matrices and the scene depth.
-3. The shader samples atmospheric scattering along that ray, stopping at the visible surface. Spotlight cone falloff, distance attenuation, and a slowly varying density field shape the beam.
-4. Ray/sphere and ray/box intersections approximate light occlusion for the three scene objects. The floating sphere position is shared with the shader.
+3. The shader samples atmospheric scattering along that ray, stopping at the visible surface. Spotlight cone falloff or finite-line emitter sampling, distance attenuation, and a slowly varying density field shape the illumination.
+4. Ray/sphere and ray/box intersections approximate visibility toward each emitter sample for the three scene objects. The floating sphere position is shared with the shader.
 5. The accumulated light is composited with the scene. Shader-animated point sprites add suspended dust.
 
-This is a visual approximation, not a physically accurate participating-media renderer. The volume occlusion is specific to the procedural objects: adding arbitrary meshes requires extending the occlusion representation. Particles are depth-tested against visible geometry but do not sample spotlight shadows. There is no temporal denoising or multiple scattering.
+This is a visual approximation, not a physically accurate participating-media renderer. The volume occlusion is specific to the procedural objects: adding arbitrary meshes requires extending the occlusion representation. Particles are depth-tested against visible geometry but do not sample spotlight shadows. Tube lighting uses six midpoint samples shared between surfaces, atmosphere, and particle illumination. Total light power stays fixed as length changes. This finite sampling can produce stepped shadows and discrete highlights, especially for long tubes or nearby surfaces; it is not an exact continuous area-light solution. Tube radius is fixed, and position or arbitrary mesh-shaped emitters are not yet configurable. There is no temporal denoising or multiple scattering.
 
 ## Project structure
 
 ```text
 src/main.js      Scene, interaction, controls, and rendering lifecycle
+src/emitter.js   Shared finite-line sample layout and emitter shader helpers
 src/volume.js    Original volumetric scattering and occlusion shaders
 src/style.css    Responsive interface, using system fonts
 ```

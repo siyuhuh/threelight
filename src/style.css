@@ -357,3 +357,21 @@ summary::-webkit-details-marker {
     pointer-events: none;
   }
 }
+
+.shape-row {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+.panel {
+  max-height: calc(100dvh - 160px);
+  overflow-y: auto;
+}
+[hidden] {
+  display: none !important;
+}
+@media (max-width: 760px) {
+  .panel {
+    max-height: 55dvh;
+  }
+}

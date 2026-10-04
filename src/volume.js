@@ -1,5 +1,7 @@
+import { emitterGLSL } from "./emitter.js";
+
 // Independently authored fullscreen single-scattering approximation.
-// Depth terminates the view ray; analytic primitives occlude the spotlight.
+// Depth terminates the view ray; analytic primitives occlude each emitter sample.
 export const vertexShader = /* glsl */ `
 varying vec2 vUv;
 void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}
@@ -9,9 +11,10 @@ precision highp float;
 varying vec2 vUv;
 uniform sampler2D sceneColor, sceneDepth;
 uniform mat4 inverseProjection, cameraWorld;
-uniform vec3 eye, lightPosition, lightDirection, lightColor;
+uniform vec3 eye, lightColor;
+${emitterGLSL}
 uniform vec3 sphereCenter;
-uniform float sphereRadius, density, power, coneCos, time;
+uniform float sphereRadius, density, power, time;
 uniform int steps;
 uniform bool enabled;
 float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
@@ -23,8 +26,8 @@ bool boxHit(vec3 origin,vec3 direction,vec3 lo,vec3 hi,float limit){
  float leave=min(min(farT.x,farT.y),farT.z);
  return leave>max(entry,0.) && entry<limit;
 }
-float visibleLight(vec3 p){
- vec3 delta=lightPosition-p;float limit=length(delta);vec3 dir=delta/limit;
+float visibleLight(vec3 p,vec3 source){
+ vec3 delta=source-p;float limit=length(delta);vec3 dir=delta/limit;
  vec3 offset=p-sphereCenter;float b=dot(offset,dir);
  float disc=b*b-dot(offset,offset)+sphereRadius*sphereRadius;
  if(disc>0.){float hit=-b-sqrt(disc);if(hit>0.002 && hit<limit)return 0.;}
@@ -44,16 +47,26 @@ void main(){
  for(int i=0;i<56;i++){
   if(i>=steps || !enabled)break;
   vec3 p=eye+ray*(float(i)+jitter)*stride;
-  vec3 fromLight=p-lightPosition;float d=length(fromLight);
-  float cone=dot(fromLight/max(d,.001),lightDirection);
-  float envelope=smoothstep(coneCos,coneCos+.055,cone);
   float bounds=smoothstep(0.,.22,p.y)*(1.-smoothstep(5.,6.,p.y));
-  if(envelope*bounds<.001)continue;
+  if(bounds<.001)continue;
   float mist=.83+.17*sin(p.x*2.1+time*.15)*sin(p.z*2.7-p.y+time*.12);
-  float amount=density*envelope*bounds*mist*.13;
-  float phase=.65+1.2*pow(max(dot(ray,normalize(fromLight)),0.),4.);
-  sum+=transmittance*lightColor*power*amount*stride*visibleLight(p)*phase*7./(1.+d*d*.15);
-  transmittance*=exp(-amount*stride*.32);
+  float amount=density*bounds*mist*.13;
+  float illumination=0.;float envelopeTotal=0.;
+  // Total power stays fixed as tube length changes. Each sample carries 1/6.
+  for(int sourceIndex=0;sourceIndex<6;sourceIndex++){
+   if(!tubeMode && sourceIndex>0)break;
+   vec3 source=emitterPosition(sourceIndex);
+   vec3 fromLight=p-source;float d=max(length(fromLight),.001);
+   float envelope=emitterEnvelope(fromLight);
+   float weight=tubeMode ? 1./6. : 1.;
+   envelopeTotal+=envelope*weight;
+   if(envelope<.001)continue;
+   float phase=.65+1.2*pow(max(dot(ray,fromLight/d),0.),4.);
+   float falloff=tubeMode ? 1.2/(.08+d*d) : 7./(1.+d*d*.15);
+   illumination+=weight*envelope*visibleLight(p,source)*phase*falloff;
+  }
+  sum+=transmittance*lightColor*power*amount*stride*illumination;
+  transmittance*=exp(-amount*envelopeTotal*stride*.32);
  }
  gl_FragColor=vec4(base*transmittance+sum,1.);
  #include <tonemapping_fragment>

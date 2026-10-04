@@ -2,6 +2,12 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { vertexShader, fragmentShader } from "./volume.js";
 import "./style.css";
+import {
+  TUBE_SAMPLES,
+  TUBE_CENTER,
+  sampleTube,
+  emitterGLSL,
+} from "./emitter.js";
 
 const $ = (id) => document.getElementById(id);
 const settings = { density: 0.65, power: 1, spread: 24 };
@@ -100,6 +106,37 @@ function start() {
   spot.shadow.bias = -0.0003;
   spot.shadow.normalBias = 0.025;
   scene.add(spot, spot.target);
+  const tubeLights = Array.from({ length: TUBE_SAMPLES }, () => {
+    const light = new THREE.PointLight(spot.color, 150 / TUBE_SAMPLES, 22, 2);
+    light.castShadow = true;
+    light.shadow.mapSize.set(256, 256);
+    light.shadow.camera.near = 0.1;
+    light.shadow.camera.far = 22;
+    light.shadow.bias = -0.0003;
+    light.shadow.normalBias = 0.025;
+    scene.add(light);
+    return light;
+  });
+  const emitterPositions = tubeLights.map((light) => light.position);
+  const emitterUniforms = {
+    emitterPositions: { value: emitterPositions },
+    tubeMode: { value: true },
+  };
+  const emitterMaterial = new THREE.MeshBasicMaterial({
+    color: spot.color.clone().multiplyScalar(4),
+  });
+  const tubeMesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.055, 0.055, 1, 16),
+    emitterMaterial,
+  );
+  tubeMesh.position.fromArray(TUBE_CENTER);
+  scene.add(tubeMesh);
+  const spotMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(0.09, 16, 12),
+    emitterMaterial,
+  );
+  spotMesh.position.copy(spot.position);
+  scene.add(spotMesh);
   const rim = new THREE.DirectionalLight("#c4d4df", 1.7);
   rim.position.set(3, 4, -4);
   scene.add(rim);
@@ -156,6 +193,7 @@ function start() {
     depthWrite: false,
     blending: THREE.AdditiveBlending,
     uniforms: {
+      ...emitterUniforms,
       lightPosition: { value: spot.position },
       lightDirection: { value: new THREE.Vector3() },
       color: { value: spot.color },
@@ -164,7 +202,18 @@ function start() {
       pixelRatio: { value: 1 },
     },
     vertexShader: `uniform float time,pixelRatio; varying vec3 world; void main(){vec3 p=position;p.y=mod(p.y+time*.065,5.);world=(modelMatrix*vec4(p,1.)).xyz;vec4 mv=viewMatrix*vec4(world,1.);gl_Position=projectionMatrix*mv;gl_PointSize=clamp(17./-mv.z,1.,3.)*pixelRatio;}`,
-    fragmentShader: `uniform vec3 lightPosition,lightDirection,color;uniform float coneCos;varying vec3 world;void main(){float radius=length(gl_PointCoord-.5);if(radius>.5)discard;float cone=dot(normalize(world-lightPosition),lightDirection);float a=smoothstep(coneCos,coneCos+.06,cone);gl_FragColor=vec4(color,a*(1.-radius*2.)*.45);}`,
+    fragmentShader: `${emitterGLSL}
+      uniform vec3 color; varying vec3 world;
+      void main(){
+        float radius=length(gl_PointCoord-.5);if(radius>.5)discard;
+        float illumination=0.;
+        for(int i=0;i<6;i++){
+          if(!tubeMode && i>0)break;
+          vec3 delta=world-emitterPosition(i);
+          illumination+=emitterEnvelope(delta)*7./(1.+dot(delta,delta)*.15)*(tubeMode?1./6.:1.);
+        }
+        gl_FragColor=vec4(color,clamp(illumination,0.,1.)*(1.-radius*2.)*.45);
+      }`,
   });
   const particles = new THREE.Points(particleGeometry, particleMaterial);
   scene.add(particles);
@@ -174,6 +223,7 @@ function start() {
   target.depthTexture = new THREE.DepthTexture(1, 1, THREE.UnsignedIntType);
   const direction = spot.target.position.clone().sub(spot.position).normalize();
   const uniforms = {
+    ...emitterUniforms,
     sceneColor: { value: target.texture },
     sceneDepth: { value: target.depthTexture },
     inverseProjection: { value: camera.projectionMatrixInverse },
@@ -202,6 +252,31 @@ function start() {
   const screen = new THREE.Scene();
   screen.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), composite));
   const screenCamera = new THREE.Camera();
+  function syncEmitter() {
+    const tube = $("shape").value === "tube";
+    const length = Number($("length").value);
+    const angle = Number($("angle").value);
+    emitterUniforms.tubeMode.value = tube;
+    $("tube-controls").hidden = !tube;
+    $("spot-controls").hidden = tube;
+    $("length-value").textContent = length.toFixed(1) + " m";
+    $("angle-value").textContent = angle + "°";
+    spot.visible = !tube;
+    spotMesh.visible = !tube;
+    tubeMesh.visible = tube;
+    tubeMesh.scale.y = length;
+    tubeMesh.rotation.z = THREE.MathUtils.degToRad(angle) - Math.PI / 2;
+    emitterMaterial.color.copy(spot.color).multiplyScalar(4);
+    const samples = sampleTube(length, angle);
+    tubeLights.forEach((light, i) => {
+      light.visible = tube;
+      light.position.fromArray(samples[i]);
+      light.intensity = (150 * settings.power) / TUBE_SAMPLES;
+      light.color.copy(spot.color);
+    });
+  }
+  for (const key of ["shape", "length", "angle"])
+    $(key).addEventListener("input", syncEmitter);
   function sync() {
     for (const key of ["density", "power", "spread"]) {
       settings[key] = Number($(key).value);
@@ -214,6 +289,7 @@ function start() {
     uniforms.power.value = settings.power;
     uniforms.coneCos.value = Math.cos(spot.angle);
     particleMaterial.uniforms.coneCos.value = uniforms.coneCos.value;
+    syncEmitter();
   }
   for (const key of ["density", "power", "spread"])
     $(key).addEventListener("input", sync);

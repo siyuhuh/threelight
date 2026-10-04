@@ -41,6 +41,30 @@
           ><button data-preset="arctic" aria-pressed="false">Arctic</button
           ><button data-preset="ember" aria-pressed="false">Ember</button>
         </div>
+        <div class="quality-row shape-row">
+          <label for="shape">Light shape</label>
+          <select id="shape">
+            <option value="tube" selected>Tube</option>
+            <option value="spot">Spotlight</option>
+          </select>
+        </div>
+        <div id="tube-controls">
+          <label class="range-label" for="length"
+            >Tube length <output id="length-value">3.0 m</output></label
+          >
+          <input
+            id="length"
+            type="range"
+            min="0.5"
+            max="4"
+            step="0.1"
+            value="3"
+          />
+          <label class="range-label" for="angle"
+            >Tube rotation <output id="angle-value">0°</output></label
+          >
+          <input id="angle" type="range" min="0" max="180" step="1" value="0" />
+        </div>
         <label class="range-label" for="density"
           >Scattering <output id="density-value">0.65</output></label
         ><input
@@ -61,16 +85,18 @@
           step="0.01"
           value="1"
         />
-        <label class="range-label" for="spread"
-          >Beam spread <output id="spread-value">24°</output></label
-        ><input
-          id="spread"
-          type="range"
-          min="12"
-          max="38"
-          step="1"
-          value="24"
-        />
+        <div id="spot-controls" hidden>
+          <label class="range-label" for="spread"
+            >Beam spread <output id="spread-value">24°</output></label
+          ><input
+            id="spread"
+            type="range"
+            min="12"
+            max="38"
+            step="1"
+            value="24"
+          />
+        </div>
         <div class="toggle-row">
           <label for="volume">Volumetric light</label
           ><input id="volume" type="checkbox" checked />
