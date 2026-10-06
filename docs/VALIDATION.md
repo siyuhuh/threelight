@@ -45,3 +45,13 @@ Tube emission is approximated by six samples. Shadow banding and discrete highli
 - Browser readout confirmed 9 draws in tube mode; disabling motion left rendered-frame count unchanged across observations (18 frames in both reads), and UI changes redraw the scene.
 - Fixed shader loop-local scope during validation. Reduced resolution introduces more visible integration noise; discrete source highlights remain a six-sample approximation.
 - Footer exposes observed FPS/draw calls for checking the user's hardware. No old/new GPU timing benchmark or physical-phone benchmark is claimed.
+
+# Continuous surface lighting (2026-10-07)
+
+- Replaced six surface point lights with four thin LTC rectangular area lights aligned along the tube; atmospheric samples remain unchanged.
+- Added a startup-only PMREM environment generated with Three.js RoomEnvironment.
+- Browser comparison with atmosphere off shows smooth sphere highlights without the previous six-source striping.
+- Upward sector removes tube direct illumination below the emitter; environment reflections remain.
+- Spotlight switching and preset changes render without captured shader errors.
+- Tube-mode readout remains 9 draws; observed frame-rate values are not a cross-device benchmark.
+- Surface occlusion and angular clipping use the nearest point on the finite tube axis, so shadows and cutoff edges remain approximate.

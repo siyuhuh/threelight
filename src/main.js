@@ -5,6 +5,8 @@ import {
   fragmentShader,
   compositeFragmentShader,
 } from "./volume.js";
+import { RectAreaLightUniformsLib } from "three/addons/lights/RectAreaLightUniformsLib.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import "./style.css";
 import {
   TUBE_SAMPLES,
@@ -79,7 +81,15 @@ function start() {
       "The graphics context was interrupted. Close other graphics-heavy tabs and try again.",
     );
   });
+  RectAreaLightUniformsLib.init();
   const scene = new THREE.Scene();
+  const environmentScene = new RoomEnvironment();
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const environmentTarget = pmrem.fromScene(environmentScene, 0.04);
+  scene.environment = environmentTarget.texture;
+  scene.environmentIntensity = 0.12;
+  environmentScene.dispose();
+  pmrem.dispose();
   scene.background = new THREE.Color("#101416");
   const camera = new THREE.PerspectiveCamera(43, 1, 0.1, 40);
   const controls = new OrbitControls(camera, renderer.domElement);
@@ -112,18 +122,17 @@ function start() {
   spot.shadow.bias = -0.0003;
   spot.shadow.normalBias = 0.025;
   scene.add(spot, spot.target);
-  const tubeLights = Array.from({ length: TUBE_SAMPLES }, () => {
-    const light = new THREE.PointLight(spot.color, 150 / TUBE_SAMPLES, 22, 2);
-    light.castShadow = false;
-    light.shadow.mapSize.set(256, 256);
-    light.shadow.camera.near = 0.1;
-    light.shadow.camera.far = 22;
-    light.shadow.bias = -0.0003;
-    light.shadow.normalBias = 0.025;
+  // Atmosphere uses quadrature samples; surfaces use continuous LTC area lights.
+  const emitterPositions = Array.from(
+    { length: TUBE_SAMPLES },
+    () => new THREE.Vector3(),
+  );
+  const tubeAreaLights = Array.from({ length: 4 }, () => {
+    const light = new THREE.RectAreaLight(spot.color, 20, 3, 0.11);
+    light.position.fromArray(TUBE_CENTER);
     scene.add(light);
     return light;
   });
-  const emitterPositions = tubeLights.map((light) => light.position);
   const emitterUniforms = {
     emitterPositions: { value: emitterPositions },
     tubeMode: { value: true },
@@ -133,6 +142,7 @@ function start() {
     sphereCenter: { value: new THREE.Vector3(0, 1.62, 0) },
     sphereRadius: { value: 0.78 },
     cameraWorld: { value: camera.matrixWorld },
+    emitterLength: { value: 3 },
   };
   const emitterMaterial = new THREE.MeshBasicMaterial({
     color: spot.color.clone().multiplyScalar(4),
@@ -159,21 +169,25 @@ function start() {
       shader.fragmentShader =
         tubeSectorGLSL +
         surfaceOcclusionGLSL +
-        "uniform mat4 cameraWorld;\n" +
+        "uniform mat4 cameraWorld; uniform float emitterLength;\n" +
         shader.fragmentShader;
-      const lighting = THREE.ShaderChunk.lights_fragment_begin.replace(
-        "getPointLightInfo( pointLight, geometryPosition, directLight );",
-        `getPointLightInfo( pointLight, geometryPosition, directLight );
-         { vec3 worldDirection=inverseTransformDirection(-directLight.direction, viewMatrix);
-         vec3 worldPosition=(cameraWorld*vec4(geometryPosition,1.)).xyz;
-         directLight.color *= tubeSector(worldDirection)*surfaceVisibleLight(worldPosition+worldDirection*.003,worldPosition+worldDirection*length(pointLight.position-geometryPosition)); }`,
+      let lighting = THREE.ShaderChunk.lights_fragment_begin;
+      lighting = lighting.replace(
+        "RE_Direct_RectArea( rectAreaLight, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );",
+        `{ vec3 receiver=(cameraWorld*vec4(geometryPosition,1.)).xyz;
+           vec3 source=(cameraWorld*vec4(rectAreaLight.position,1.)).xyz;
+           // Closest point on the finite line gives a smooth visibility estimate.
+           source+=tubeAxis*clamp(dot(receiver-source,tubeAxis),-.5*emitterLength,.5*emitterLength);
+           vec3 delta=source-receiver;
+           rectAreaLight.color*=tubeSector(-delta)*surfaceVisibleLight(receiver+normalize(delta)*.003,source);
+           RE_Direct_RectArea( rectAreaLight, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight ); }`,
       );
       shader.fragmentShader = shader.fragmentShader.replace(
         "#include <lights_fragment_begin>",
         lighting,
       );
     };
-    material.customProgramCacheKey = () => "tube-sector-v1";
+    material.customProgramCacheKey = () => "tube-area-sector-v2";
     return material;
   }
   const floor = new THREE.Mesh(
@@ -359,11 +373,29 @@ function start() {
     tubeMesh.rotation.z = THREE.MathUtils.degToRad(angle) - Math.PI / 2;
     emitterMaterial.color.copy(spot.color).multiplyScalar(4);
     const samples = sampleTube(length, angle);
-    tubeLights.forEach((light, i) => {
+    emitterUniforms.emitterLength.value = length;
+    samples.forEach((position, i) => emitterPositions[i].fromArray(position));
+    const axis = emitterUniforms.tubeAxis.value;
+    const down = new THREE.Vector3(
+      Math.sin(axisAngle),
+      -Math.cos(axisAngle),
+      0,
+    );
+    tubeAreaLights.forEach((light, i) => {
       light.visible = tube;
-      light.position.fromArray(samples[i]);
-      light.intensity = (150 * settings.power) / TUBE_SAMPLES;
+      light.width = length;
+      light.intensity = (600 * settings.power) / length;
       light.color.copy(spot.color);
+      const azimuth = (i * Math.PI) / 2;
+      const emission = down
+        .clone()
+        .multiplyScalar(Math.cos(azimuth))
+        .add(new THREE.Vector3(0, 0, Math.sin(azimuth)));
+      const localZ = emission.negate();
+      const localY = new THREE.Vector3().crossVectors(localZ, axis);
+      light.quaternion.setFromRotationMatrix(
+        new THREE.Matrix4().makeBasis(axis, localY, localZ),
+      );
     });
   }
   for (const key of ["shape", "length", "angle", "sector", "heading"])

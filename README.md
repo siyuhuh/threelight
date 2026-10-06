@@ -8,6 +8,7 @@
 
 ## Explore
 
+- Continuous tube highlights from LTC rectangular area lights, plus a procedurally generated, prefiltered studio environment for metal reflections.
 - Tube and spotlight emitters, with a visible light source. Tube length (0.5–4 m) and rotation (0–180°) change the source geometry and illumination together.
 - Tube emission sector: adjustable 15–360° width and ±180° direction, with a live cross-section diagram. Defaults to a 90° downward sector.
 - Three atmosphere presets: Gallery, Arctic, and Ember.
@@ -38,13 +39,13 @@ npm run preview
 
 ## How it works
 
-1. Three.js draws the procedural scene into a half-float color target with a depth texture. A spotlight or six point samples along a tube, with analytic primitive visibility instead of cube shadow maps illuminate the surfaces. The tube uses an angular emission sector around its axis; 360° restores omnidirectional emission. Beam spread applies only to spotlight mode.
+1. Three.js draws the procedural scene into a half-float color target with a depth texture. A spotlight or four narrow rectangular area lights illuminate the surfaces. The rectangles approximate the sides of a tube with continuous LTC highlights; analytic primitive visibility avoids cube shadow maps. The tube uses an angular emission sector around its axis; 360° restores omnidirectional emission. Beam spread applies only to spotlight mode.
 2. A fullscreen shader reconstructs a world-space view ray from the camera matrices and the scene depth.
 3. The shader samples atmospheric scattering along that ray, stopping at the visible surface. Spotlight cone falloff or finite-line emitter sampling, distance attenuation, and a slowly varying density field shape the illumination.
 4. Ray/sphere and ray/box intersections approximate visibility toward each emitter sample for the three scene objects. The floating sphere position is shared with the shader.
 5. Light is integrated into a reduced-resolution target and reconstructed with depth-aware weights before compositing with the full-resolution scene. Shader-animated point sprites add suspended dust.
 
-This is a visual approximation, not a physically accurate participating-media renderer. The volume occlusion is specific to the procedural objects: adding arbitrary meshes requires extending the occlusion representation. Particles are depth-tested against visible geometry but do not sample spotlight shadows. Tube lighting uses six midpoint samples shared between surfaces, atmosphere, and particle illumination. Total sampled light power stays fixed as length changes. Narrowing the emission sector masks directions rather than redistributing their energy into the remaining sector. The sector mask is shared by the surface-light shader, volumetric shader, and particles, with a roughly 2° softened boundary. Direction 0° points downward for a horizontal tube, +90° toward world +Z, and ±180° upward; this local frame rotates with the tube. Ambient and rim lighting are unaffected. This finite sampling can produce stepped shadows and discrete highlights, especially for long tubes or nearby surfaces; it is not an exact continuous area-light solution. Tube radius is fixed, and position or arbitrary mesh-shaped emitters are not yet configurable. There is no temporal denoising or multiple scattering.
+This is a visual approximation, not a physically accurate participating-media renderer. The volume occlusion is specific to the procedural objects: adding arbitrary meshes requires extending the occlusion representation. Particles are depth-tested against visible geometry but do not sample spotlight shadows. Atmosphere and particles use six midpoint samples. Surfaces use four continuous rectangular area lights aligned with the tube. The environment reflection is prefiltered once at startup from Three.js RoomEnvironment, with no external asset download. Total sampled light power stays fixed as length changes. Narrowing the emission sector masks directions rather than redistributing their energy into the remaining sector. The sector mask is shared by the surface-light shader, volumetric shader, and particles, with a roughly 2° softened boundary. Direction 0° points downward for a horizontal tube, +90° toward world +Z, and ±180° upward; this local frame rotates with the tube. Ambient and rim lighting are unaffected. Volumetric shadows can still show finite-sampling artifacts. Surface angular gating and visibility are evaluated at the nearest point on the tube axis rather than integrated across each rectangle, so sector boundaries and shadows remain approximations. The four rectangles approximate a cylinder; this is not an exact cylindrical emitter solution. Tube radius is fixed, and position or arbitrary mesh-shaped emitters are not yet configurable. There is no temporal denoising or multiple scattering.
 
 ## Project structure
 
@@ -61,7 +62,7 @@ The included GitHub Actions workflow builds on pull requests and pushes to `main
 
 ## Compatibility and performance
 
-A browser with WebGL 2 and renderable half-float textures is required. Mobile viewports default to low quality. Both modes cap pixel ratio at 1. High mode samples volume at half width/height with 32 steps; low mode uses quarter width/height with 16 steps. When motion is disabled, settled scenes stop drawing until controls or camera change. Turning off volumetric light skips its render pass. Tube shadows use analytic intersections for this procedural scene, avoiding six cube shadow maps. The footer reports observed FPS and draw calls; these are device-dependent, not a benchmark guarantee. Actual frame rate depends on the GPU and viewport; physical-device mobile testing remains part of release validation.
+A browser with WebGL 2 and renderable half-float textures is required. Mobile viewports default to low quality. Both modes cap pixel ratio at 1. High mode samples volume at half width/height with 32 steps; low mode uses quarter width/height with 16 steps. When motion is disabled, settled scenes stop drawing until controls or camera change. Turning off volumetric light skips its render pass. Tube surface shadows use analytic intersections at the closest point on the tube axis for this procedural scene, avoiding cube shadow maps. The environment map is precomputed once, not rerendered every frame. The footer reports observed FPS and draw calls; these are device-dependent, not a benchmark guarantee. Actual frame rate depends on the GPU and viewport; physical-device mobile testing remains part of release validation.
 
 ## Inspiration and provenance
 
