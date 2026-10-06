@@ -43,3 +43,32 @@ float emitterEnvelope(vec3 fromLight) {
  return smoothstep(coneCos,coneCos+.055,dot(normalize(fromLight),lightDirection));
 }
 `;
+
+export const occlusionGLSL = /* glsl */ `
+uniform vec3 sphereCenter;
+uniform float sphereRadius;
+bool boxHit(vec3 origin,vec3 direction,vec3 lo,vec3 hi,float limit){
+ vec3 safeDir=mix(vec3(-1.),vec3(1.),step(vec3(0.),direction))*max(abs(direction),vec3(0.00001));
+ vec3 a=(lo-origin)/safeDir,b=(hi-origin)/safeDir;
+ vec3 nearT=min(a,b),farT=max(a,b);
+ float entry=max(max(nearT.x,nearT.y),nearT.z);
+ float leave=min(min(farT.x,farT.y),farT.z);
+ return leave>max(entry,0.) && entry<limit;
+}
+float visibleLight(vec3 p,vec3 source){
+ vec3 delta=source-p;float limit=length(delta);vec3 dir=delta/limit;
+ vec3 offset=p-sphereCenter;float b=dot(offset,dir);
+ float disc=b*b-dot(offset,offset)+sphereRadius*sphereRadius;
+ if(disc>0.){float hit=-b-sqrt(disc);if(hit>0.002 && hit<limit)return 0.;}
+ if(boxHit(p,dir,vec3(-.75,0.,-.75),vec3(.75,.65,.75),limit))return 0.;
+ if(boxHit(p,dir,vec3(-2.1,0.,-.4),vec3(-1.7,2.7,0.),limit))return 0.;
+ return 1.;
+}
+`;
+
+export const surfaceOcclusionGLSL = occlusionGLSL
+  .replace(
+    "visibleLight(vec3 p,vec3 source)",
+    "surfaceVisibleLight(vec3 p,vec3 source)",
+  )
+  .replace("if(disc>0.)", "if(disc>0. && length(offset)>sphereRadius+.02)");

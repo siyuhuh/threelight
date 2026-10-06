@@ -1,4 +1,4 @@
-import { emitterGLSL } from "./emitter.js";
+import { emitterGLSL, occlusionGLSL } from "./emitter.js";
 
 // Independently authored fullscreen single-scattering approximation.
 // Depth terminates the view ray; analytic primitives occlude each emitter sample.
@@ -13,30 +13,13 @@ uniform sampler2D sceneColor, sceneDepth;
 uniform mat4 inverseProjection, cameraWorld;
 uniform vec3 eye, lightColor;
 ${emitterGLSL}
-uniform vec3 sphereCenter;
-uniform float sphereRadius, density, power, time;
+uniform float density, power, time;
 uniform int steps;
 uniform bool enabled;
 float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
-bool boxHit(vec3 origin,vec3 direction,vec3 lo,vec3 hi,float limit){
- vec3 safeDir=mix(vec3(-1.),vec3(1.),step(vec3(0.),direction))*max(abs(direction),vec3(0.00001));
- vec3 a=(lo-origin)/safeDir,b=(hi-origin)/safeDir;
- vec3 nearT=min(a,b),farT=max(a,b);
- float entry=max(max(nearT.x,nearT.y),nearT.z);
- float leave=min(min(farT.x,farT.y),farT.z);
- return leave>max(entry,0.) && entry<limit;
-}
-float visibleLight(vec3 p,vec3 source){
- vec3 delta=source-p;float limit=length(delta);vec3 dir=delta/limit;
- vec3 offset=p-sphereCenter;float b=dot(offset,dir);
- float disc=b*b-dot(offset,offset)+sphereRadius*sphereRadius;
- if(disc>0.){float hit=-b-sqrt(disc);if(hit>0.002 && hit<limit)return 0.;}
- if(boxHit(p,dir,vec3(-.75,0.,-.75),vec3(.75,.65,.75),limit))return 0.;
- if(boxHit(p,dir,vec3(-2.1,0.,-.4),vec3(-1.7,2.7,0.),limit))return 0.;
- return 1.;
-}
+${occlusionGLSL}
 void main(){
- vec3 base=texture2D(sceneColor,vUv).rgb;
+
 
  float depth=texture2D(sceneDepth,vUv).r;
  vec4 view=inverseProjection*vec4(vUv*2.-1.,depth*2.-1.,1.);
@@ -68,7 +51,35 @@ void main(){
   sum+=transmittance*lightColor*power*amount*stride*illumination;
   transmittance*=exp(-amount*envelopeTotal*stride*.32);
  }
- gl_FragColor=vec4(base*transmittance+sum,1.);
+ gl_FragColor=vec4(sum,transmittance);
+}
+`;
+
+// Depth-aware reconstruction keeps reduced-resolution light off silhouettes.
+export const compositeFragmentShader = /* glsl */ `
+varying vec2 vUv;
+uniform sampler2D sceneColor, sceneDepth, volumeTexture;
+uniform vec2 volumeSize;
+uniform bool volumeEnabled;
+void main(){
+ vec3 base=texture2D(sceneColor,vUv).rgb;
+ float depth=texture2D(sceneDepth,vUv).r;
+ vec2 grid=vUv*volumeSize-.5;
+ vec2 origin=floor(grid+.5);
+ vec4 light=vec4(0.,0.,0.,1.);
+ if(volumeEnabled){
+  light=vec4(0.);float total=0.;
+  for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++){
+   vec2 cell=origin+vec2(float(x),float(y));
+   vec2 uv=(cell+.5)/volumeSize;
+   vec2 offset=cell-grid;
+   float neighborDepth=texture2D(sceneDepth,uv).r;
+   float weight=exp(-.7*dot(offset,offset))/(.0002+abs(neighborDepth-depth));
+   light+=texture2D(volumeTexture,uv)*weight;total+=weight;
+  }
+  light/=max(total,.00001);
+ }
+ gl_FragColor=vec4(base*light.a+light.rgb,1.);
  #include <tonemapping_fragment>
  #include <colorspace_fragment>
 }

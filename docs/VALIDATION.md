@@ -36,3 +36,12 @@ Tube emission is approximated by six samples. Shadow banding and discrete highli
 - 360° restores omnidirectional illumination regardless of heading.
 - Spotlight mode hides tube-sector controls and renders without shader errors.
 - The SVG cross-section follows width and heading changes, including the full-circle case.
+
+# Performance update (2026-10-06)
+
+- Replaced six tube cube shadow maps (up to 36 shadow faces per frame) with analytic surface visibility for this procedural scene.
+- Integrated volume at half width/height with 32 steps in high mode, quarter width/height with 16 steps in low mode; reconstruction uses scene-depth weights.
+- At equal output resolution, integration samples are approximately 1/7 of previous high mode and 1/24 of previous low mode. These are workload ratios, not measured FPS gains.
+- Browser readout confirmed 9 draws in tube mode; disabling motion left rendered-frame count unchanged across observations (18 frames in both reads), and UI changes redraw the scene.
+- Fixed shader loop-local scope during validation. Reduced resolution introduces more visible integration noise; discrete source highlights remain a six-sample approximation.
+- Footer exposes observed FPS/draw calls for checking the user's hardware. No old/new GPU timing benchmark or physical-phone benchmark is claimed.

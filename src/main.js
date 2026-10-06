@@ -1,6 +1,10 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { vertexShader, fragmentShader } from "./volume.js";
+import {
+  vertexShader,
+  fragmentShader,
+  compositeFragmentShader,
+} from "./volume.js";
 import "./style.css";
 import {
   TUBE_SAMPLES,
@@ -8,6 +12,7 @@ import {
   sampleTube,
   emitterGLSL,
   tubeSectorGLSL,
+  surfaceOcclusionGLSL,
 } from "./emitter.js";
 
 const $ = (id) => document.getElementById(id);
@@ -109,7 +114,7 @@ function start() {
   scene.add(spot, spot.target);
   const tubeLights = Array.from({ length: TUBE_SAMPLES }, () => {
     const light = new THREE.PointLight(spot.color, 150 / TUBE_SAMPLES, 22, 2);
-    light.castShadow = true;
+    light.castShadow = false;
     light.shadow.mapSize.set(256, 256);
     light.shadow.camera.near = 0.1;
     light.shadow.camera.far = 22;
@@ -125,6 +130,9 @@ function start() {
     tubeAxis: { value: new THREE.Vector3(1, 0, 0) },
     sectorDirection: { value: new THREE.Vector3(0, -1, 0) },
     sectorHalfAngle: { value: Math.PI / 4 },
+    sphereCenter: { value: new THREE.Vector3(0, 1.62, 0) },
+    sphereRadius: { value: 0.78 },
+    cameraWorld: { value: camera.matrixWorld },
   };
   const emitterMaterial = new THREE.MeshBasicMaterial({
     color: spot.color.clone().multiplyScalar(4),
@@ -148,11 +156,17 @@ function start() {
     const material = new THREE.MeshStandardMaterial(options);
     material.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, emitterUniforms);
-      shader.fragmentShader = tubeSectorGLSL + shader.fragmentShader;
+      shader.fragmentShader =
+        tubeSectorGLSL +
+        surfaceOcclusionGLSL +
+        "uniform mat4 cameraWorld;\n" +
+        shader.fragmentShader;
       const lighting = THREE.ShaderChunk.lights_fragment_begin.replace(
         "getPointLightInfo( pointLight, geometryPosition, directLight );",
         `getPointLightInfo( pointLight, geometryPosition, directLight );
-         directLight.color *= tubeSector(inverseTransformDirection(-directLight.direction, viewMatrix));`,
+         { vec3 worldDirection=inverseTransformDirection(-directLight.direction, viewMatrix);
+         vec3 worldPosition=(cameraWorld*vec4(geometryPosition,1.)).xyz;
+         directLight.color *= tubeSector(worldDirection)*surfaceVisibleLight(worldPosition+worldDirection*.003,worldPosition+worldDirection*length(pointLight.position-geometryPosition)); }`,
       );
       shader.fragmentShader = shader.fragmentShader.replace(
         "#include <lights_fragment_begin>",
@@ -194,6 +208,7 @@ function start() {
   rings.material.transparent = true;
   rings.material.opacity = 0.16;
   scene.add(rings);
+  emitterUniforms.sphereCenter.value = sphere.position;
   const positions = new Float32Array(420 * 3);
   let seed = 23;
   const random = () => {
@@ -264,15 +279,36 @@ function start() {
     enabled: { value: true },
   };
   particleMaterial.uniforms.lightDirection.value.copy(direction);
-  const composite = new THREE.ShaderMaterial({
+  const volumeMaterial = new THREE.ShaderMaterial({
     vertexShader,
     fragmentShader,
     uniforms,
     depthTest: false,
     depthWrite: false,
   });
+  const volumeTarget = new THREE.WebGLRenderTarget(1, 1, {
+    type: THREE.HalfFloatType,
+    depthBuffer: false,
+  });
+  const composite = new THREE.ShaderMaterial({
+    vertexShader,
+    fragmentShader: compositeFragmentShader,
+    uniforms: {
+      sceneColor: { value: target.texture },
+      sceneDepth: { value: target.depthTexture },
+      volumeTexture: { value: volumeTarget.texture },
+      volumeSize: { value: new THREE.Vector2(1, 1) },
+      volumeEnabled: uniforms.enabled,
+    },
+    depthTest: false,
+    depthWrite: false,
+  });
   const screen = new THREE.Scene();
-  screen.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), composite));
+  const screenQuad = new THREE.Mesh(
+    new THREE.PlaneGeometry(2, 2),
+    volumeMaterial,
+  );
+  screen.add(screenQuad);
   const screenCamera = new THREE.Camera();
   function syncEmitter() {
     const tube = $("shape").value === "tube";
@@ -369,7 +405,7 @@ function start() {
     : "high";
   function resize() {
     const high = $("quality").value === "high";
-    const ratio = Math.min(devicePixelRatio, high ? 1.5 : 1);
+    const ratio = Math.min(devicePixelRatio, 1);
     renderer.setPixelRatio(ratio);
     renderer.setSize(innerWidth, innerHeight);
     target.setSize(
@@ -378,13 +414,42 @@ function start() {
     );
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
-    uniforms.steps.value = high ? 56 : 24;
+    const scale = high ? 0.5 : 0.25;
+    const vw = Math.max(1, Math.floor(innerWidth * ratio * scale));
+    const vh = Math.max(1, Math.floor(innerHeight * ratio * scale));
+    volumeTarget.setSize(vw, vh);
+    composite.uniforms.volumeSize.value.set(vw, vh);
+    uniforms.steps.value = high ? 32 : 16;
     particleMaterial.uniforms.pixelRatio.value = ratio;
   }
   window.addEventListener("resize", resize);
   $("quality").onchange = resize;
   resize();
   sync();
+  let dirty = true;
+  controls.addEventListener("change", () => {
+    dirty = true;
+  });
+  document.addEventListener("click", () => {
+    dirty = true;
+  });
+  document.addEventListener("input", () => {
+    dirty = true;
+  });
+  document.addEventListener("change", () => {
+    dirty = true;
+  });
+  window.addEventListener("resize", () => {
+    dirty = true;
+  });
+  $("reset").addEventListener("click", () => {
+    dirty = true;
+  });
+  renderer.shadowMap.autoUpdate = false;
+  renderer.info.autoReset = false;
+  let measuredFrames = 0,
+    measureStart = performance.now(),
+    renderedFrames = 0;
   let previous = 0,
     elapsed = 0;
   function frame(now) {
@@ -395,15 +460,40 @@ function start() {
     uniforms.time.value = elapsed;
     particleMaterial.uniforms.time.value = elapsed;
     controls.update();
+    if (!dirty && !$("motion").checked) {
+      $("render-status").textContent = "Paused · redraw on interaction";
+      return;
+    }
+    renderer.info.reset();
+    dirty = false;
+    spot.shadow.needsUpdate = spot.visible;
+    renderer.shadowMap.needsUpdate = spot.visible;
     renderer.setRenderTarget(target);
     renderer.render(scene, camera);
+    if (uniforms.enabled.value) {
+      screenQuad.material = volumeMaterial;
+      renderer.setRenderTarget(volumeTarget);
+      renderer.render(screen, screenCamera);
+    }
+    screenQuad.material = composite;
     renderer.setRenderTarget(null);
     renderer.render(screen, screenCamera);
     $("status").hidden = true;
+    renderedFrames++;
+    measuredFrames++;
+    $("render-status").dataset.frames = String(renderedFrames);
+    $("render-status").dataset.draws = String(renderer.info.render.calls);
+    if (now - measureStart >= 500) {
+      $("render-status").textContent =
+        `${Math.round((measuredFrames * 1000) / (now - measureStart))} FPS · ${renderer.info.render.calls} draws`;
+      measureStart = now;
+      measuredFrames = 0;
+    }
   }
   renderer.setAnimationLoop(frame);
   document.addEventListener("visibilitychange", () => {
     previous = 0;
+    dirty = true;
     renderer.setAnimationLoop(document.hidden ? null : frame);
   });
 }
