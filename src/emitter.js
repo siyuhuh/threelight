@@ -24,7 +24,7 @@ float tubeSector(vec3 fromLight) {
  float radius=length(radial);
  if(radius<.00001) return 0.;
  float angle=acos(clamp(dot(radial/radius,sectorDirection),-1.,1.));
- float feather=min(.035,sectorHalfAngle*.2);
+ float feather=min(.10,sectorHalfAngle*.3);
  return 1.-smoothstep(sectorHalfAngle-feather,sectorHalfAngle,angle);
 }
 `;
@@ -66,9 +66,32 @@ float visibleLight(vec3 p,vec3 source){
 }
 `;
 
+// Soft visibility for surfaces: sphere penumbra plus finite-line box visibility.
 export const surfaceOcclusionGLSL = occlusionGLSL
   .replace(
     "visibleLight(vec3 p,vec3 source)",
     "surfaceVisibleLight(vec3 p,vec3 source)",
   )
-  .replace("if(disc>0.)", "if(disc>0. && length(offset)>sphereRadius+.02)");
+  .replace(
+    "if(disc>0.){float hit=-b-sqrt(disc);if(hit>0.002 && hit<limit)return 0.;}",
+    `float visibility=1.;
+  float along=-b;
+  if(length(offset)>sphereRadius+.025 && along>0. && along<limit){
+   float separation=length(offset+dir*along)-sphereRadius;
+   float penumbra=.035+.09*along/max(limit-along,.2);
+   visibility=smoothstep(-penumbra,penumbra,separation);
+  }`,
+  )
+  .replace("return 1.;", "return visibility;");
+
+// Rounded receivers lie slightly inside their conservative box occluders.
+// Skip their own box, while keeping that box as an occluder for other receivers.
+export const roundedSurfaceOcclusionGLSL = surfaceOcclusionGLSL
+  .replace(
+    "if(boxHit(p,dir,vec3(-.75,0.,-.75),vec3(.75,.65,.75),limit))",
+    "if((any(lessThan(p,vec3(-.76,-.01,-.76))) || any(greaterThan(p,vec3(.76,.66,.76)))) && boxHit(p,dir,vec3(-.75,0.,-.75),vec3(.75,.65,.75),limit))",
+  )
+  .replace(
+    "if(boxHit(p,dir,vec3(-2.1,0.,-.4),vec3(-1.7,2.7,0.),limit))",
+    "if((any(lessThan(p,vec3(-2.11,-.01,-.41))) || any(greaterThan(p,vec3(-1.69,2.71,.01)))) && boxHit(p,dir,vec3(-2.1,0.,-.4),vec3(-1.7,2.7,0.),limit))",
+  );

@@ -55,3 +55,12 @@ Tube emission is approximated by six samples. Shadow banding and discrete highli
 - Spotlight switching and preset changes render without captured shader errors.
 - Tube-mode readout remains 9 draws; observed frame-rate values are not a cross-device benchmark.
 - Surface occlusion and angular clipping use the nearest point on the finite tube axis, so shadows and cutoff edges remain approximate.
+
+# Studio quality update (2026-10-07)
+
+- Continuous finite-line atmospheric attenuation and clipped integration intervals remove the obvious tube-adjacent speckles in the default sector.
+- Custom procedural softboxes, rounded solids, softer sphere visibility, restrained bloom, and high-mode MSAA improve material readability.
+- High/low switching, paused interaction redraw, 360° emission, default 90° emission, and spotlight rendering checked in the desktop browser.
+- High mode now uses 56 half-resolution steps; low uses 32 quarter-resolution steps. These changes favor quality and are not claimed to be free performance improvements.
+- Production build passes. Earlier PMREM blur warnings were addressed by reducing the startup blur radius.
+- Finite-sample shadow bands can still appear, particularly in spotlight mode. No physical-phone or cross-GPU benchmark was performed.

@@ -6,7 +6,9 @@ import {
   compositeFragmentShader,
 } from "./volume.js";
 import { RectAreaLightUniformsLib } from "three/addons/lights/RectAreaLightUniformsLib.js";
-import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+import { createStudioEnvironment } from "./studio.js";
+import { bloomFragmentShader } from "./bloom.js";
 import "./style.css";
 import {
   TUBE_SAMPLES,
@@ -14,14 +16,14 @@ import {
   sampleTube,
   emitterGLSL,
   tubeSectorGLSL,
-  surfaceOcclusionGLSL,
+  roundedSurfaceOcclusionGLSL,
 } from "./emitter.js";
 
 const $ = (id) => document.getElementById(id);
 const settings = { density: 0.65, power: 1, spread: 24 };
 const presets = {
   gallery: {
-    color: "#dce9b2",
+    color: "#ffe3c1",
     density: 0.65,
     power: 1,
     spread: 24,
@@ -83,14 +85,11 @@ function start() {
   });
   RectAreaLightUniformsLib.init();
   const scene = new THREE.Scene();
-  const environmentScene = new RoomEnvironment();
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  const environmentTarget = pmrem.fromScene(environmentScene, 0.04);
+  const environmentTarget = createStudioEnvironment(renderer);
   scene.environment = environmentTarget.texture;
-  scene.environmentIntensity = 0.12;
-  environmentScene.dispose();
-  pmrem.dispose();
-  scene.background = new THREE.Color("#101416");
+  scene.environmentIntensity = 0.65;
+  scene.background = new THREE.Color("#0a1018");
+  scene.fog = new THREE.FogExp2("#0a1018", 0.065);
   const camera = new THREE.PerspectiveCamera(43, 1, 0.1, 40);
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.target.set(0, 1.9, 0);
@@ -100,15 +99,15 @@ function start() {
   controls.maxDistance = 17;
   controls.maxPolarAngle = Math.PI * 0.48;
   function resetView() {
-    camera.position.set(7, 4.6, 10.5);
+    camera.position.set(5.5, 3.4, 8);
     controls.target.set(0, 1.9, 0);
     controls.update();
   }
   resetView();
   $("reset").onclick = resetView;
-  scene.add(new THREE.HemisphereLight("#aec0bb", "#242821", 0.55));
+  scene.add(new THREE.HemisphereLight("#aec0bb", "#242821", 0.18));
   const spot = new THREE.SpotLight(
-    "#dce9b2",
+    "#ffe3c1",
     150,
     22,
     THREE.MathUtils.degToRad(24),
@@ -159,7 +158,7 @@ function start() {
   );
   spotMesh.position.copy(spot.position);
   scene.add(spotMesh);
-  const rim = new THREE.DirectionalLight("#c4d4df", 1.7);
+  const rim = new THREE.DirectionalLight("#c4d4df", 0.25);
   rim.position.set(3, 4, -4);
   scene.add(rim);
   function sectorMaterial(options) {
@@ -168,8 +167,8 @@ function start() {
       Object.assign(shader.uniforms, emitterUniforms);
       shader.fragmentShader =
         tubeSectorGLSL +
-        surfaceOcclusionGLSL +
-        "uniform mat4 cameraWorld; uniform float emitterLength;\n" +
+        roundedSurfaceOcclusionGLSL +
+        "uniform mat4 cameraWorld; uniform float emitterLength; uniform vec3 emitterPositions[6];\n" +
         shader.fragmentShader;
       let lighting = THREE.ShaderChunk.lights_fragment_begin;
       lighting = lighting.replace(
@@ -179,7 +178,12 @@ function start() {
            // Closest point on the finite line gives a smooth visibility estimate.
            source+=tubeAxis*clamp(dot(receiver-source,tubeAxis),-.5*emitterLength,.5*emitterLength);
            vec3 delta=source-receiver;
-           rectAreaLight.color*=tubeSector(-delta)*surfaceVisibleLight(receiver+normalize(delta)*.003,source);
+           float visibility=0.;
+           for(int sampleIndex=0;sampleIndex<6;sampleIndex++){
+             vec3 sampleDelta=emitterPositions[sampleIndex]-receiver;
+             visibility+=surfaceVisibleLight(receiver+normalize(sampleDelta)*.006,emitterPositions[sampleIndex])/6.;
+           }
+           rectAreaLight.color*=tubeSector(-delta)*visibility;
            RE_Direct_RectArea( rectAreaLight, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight ); }`,
       );
       shader.fragmentShader = shader.fragmentShader.replace(
@@ -187,12 +191,17 @@ function start() {
         lighting,
       );
     };
-    material.customProgramCacheKey = () => "tube-area-sector-v2";
+    material.customProgramCacheKey = () => "tube-area-soft-shadow-v3";
     return material;
   }
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(200, 200),
-    sectorMaterial({ color: "#343b35", roughness: 0.92 }),
+    sectorMaterial({
+      color: "#202b36",
+      roughness: 0.7,
+      metalness: 0.12,
+      envMapIntensity: 0.3,
+    }),
   );
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
@@ -211,19 +220,18 @@ function start() {
     return mesh;
   }
   solid(
-    new THREE.BoxGeometry(1.5, 0.65, 1.5),
+    new RoundedBoxGeometry(1.5, 0.65, 1.5, 3, 0.045),
     [0, 0.325, 0],
-    sectorMaterial({ color: "#313b32", roughness: 0.8 }),
+    sectorMaterial({ color: "#344452", roughness: 0.38, metalness: 0.4 }),
   );
-  const sphere = solid(new THREE.SphereGeometry(0.78, 64, 32), [0, 1.62, 0]);
-  solid(new THREE.BoxGeometry(0.4, 2.7, 0.4), [-1.9, 1.35, -0.2]);
-  const rings = new THREE.GridHelper(30, 30, "#485445", "#29332b");
-  rings.position.y = 0.003;
-  rings.material.transparent = true;
-  rings.material.opacity = 0.16;
-  scene.add(rings);
+  const sphere = solid(
+    new THREE.SphereGeometry(0.78, 96, 64),
+    [0, 1.62, 0],
+    sectorMaterial({ color: "#b8c4cf", roughness: 0.2, metalness: 0.9 }),
+  );
+  solid(new RoundedBoxGeometry(0.4, 2.7, 0.4, 3, 0.035), [-1.9, 1.35, -0.2]);
   emitterUniforms.sphereCenter.value = sphere.position;
-  const positions = new Float32Array(420 * 3);
+  const positions = new Float32Array(180 * 3);
   let seed = 23;
   const random = () => {
     seed = (seed * 1664525 + 1013904223) >>> 0;
@@ -263,7 +271,7 @@ function start() {
           vec3 delta=world-emitterPosition(i);
           illumination+=emitterEnvelope(delta)*7./(1.+dot(delta,delta)*.15)*(tubeMode?1./6.:1.);
         }
-        gl_FragColor=vec4(color,clamp(illumination,0.,1.)*(1.-radius*2.)*.45);
+        gl_FragColor=vec4(color,clamp(illumination,0.,1.)*(1.-radius*2.)*.2);
       }`,
   });
   const particles = new THREE.Points(particleGeometry, particleMaterial);
@@ -304,6 +312,24 @@ function start() {
     type: THREE.HalfFloatType,
     depthBuffer: false,
   });
+  const bloomTargets = [0, 1].map(
+    () =>
+      new THREE.WebGLRenderTarget(1, 1, {
+        type: THREE.HalfFloatType,
+        depthBuffer: false,
+      }),
+  );
+  const bloomMaterial = new THREE.ShaderMaterial({
+    vertexShader,
+    fragmentShader: bloomFragmentShader,
+    uniforms: {
+      source: { value: target.texture },
+      direction: { value: new THREE.Vector2() },
+      extract: { value: true },
+    },
+    depthTest: false,
+    depthWrite: false,
+  });
   const composite = new THREE.ShaderMaterial({
     vertexShader,
     fragmentShader: compositeFragmentShader,
@@ -313,6 +339,7 @@ function start() {
       volumeTexture: { value: volumeTarget.texture },
       volumeSize: { value: new THREE.Vector2(1, 1) },
       volumeEnabled: uniforms.enabled,
+      bloomTexture: { value: bloomTargets[1].texture },
     },
     depthTest: false,
     depthWrite: false,
@@ -440,6 +467,11 @@ function start() {
     const ratio = Math.min(devicePixelRatio, 1);
     renderer.setPixelRatio(ratio);
     renderer.setSize(innerWidth, innerHeight);
+    const samples = high ? 4 : 0;
+    if (target.samples !== samples) {
+      target.dispose();
+      target.samples = samples;
+    }
     target.setSize(
       Math.floor(innerWidth * ratio),
       Math.floor(innerHeight * ratio),
@@ -451,7 +483,13 @@ function start() {
     const vh = Math.max(1, Math.floor(innerHeight * ratio * scale));
     volumeTarget.setSize(vw, vh);
     composite.uniforms.volumeSize.value.set(vw, vh);
-    uniforms.steps.value = high ? 32 : 16;
+    bloomTargets.forEach((rt) =>
+      rt.setSize(
+        Math.max(1, Math.floor(innerWidth / 4)),
+        Math.max(1, Math.floor(innerHeight / 4)),
+      ),
+    );
+    uniforms.steps.value = high ? 56 : 32;
     particleMaterial.uniforms.pixelRatio.value = ratio;
   }
   window.addEventListener("resize", resize);
@@ -507,6 +545,17 @@ function start() {
       renderer.setRenderTarget(volumeTarget);
       renderer.render(screen, screenCamera);
     }
+    screenQuad.material = bloomMaterial;
+    bloomMaterial.uniforms.source.value = target.texture;
+    bloomMaterial.uniforms.extract.value = true;
+    bloomMaterial.uniforms.direction.value.set(1 / bloomTargets[0].width, 0);
+    renderer.setRenderTarget(bloomTargets[0]);
+    renderer.render(screen, screenCamera);
+    bloomMaterial.uniforms.source.value = bloomTargets[0].texture;
+    bloomMaterial.uniforms.extract.value = false;
+    bloomMaterial.uniforms.direction.value.set(0, 1 / bloomTargets[1].height);
+    renderer.setRenderTarget(bloomTargets[1]);
+    renderer.render(screen, screenCamera);
     screenQuad.material = composite;
     renderer.setRenderTarget(null);
     renderer.render(screen, screenCamera);

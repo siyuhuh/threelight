@@ -1,6 +1,6 @@
 {
   "name": "threelight",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "description": "An interactive, procedural volumetric light playground built with Three.js.",
